@@ -1,0 +1,17 @@
+{
+	"name": "GOLANG Web Service",
+	"dockerComposeFile": "docker-compose.yml",
+	"workspaceFolder": "/workspaces",
+	"service": "go-web",
+	"remoteUser": "willes",
+  
+	// Specify the services you want to launch, comment will launch all
+	"runServices": ["go-web"],
+  
+	"settings": {
+		"terminal.integrated.shell.linux": "/bin/bash"
+	},
+	"extensions": [
+		"dbaeumer.vscode-eslint"
+	],
+  }

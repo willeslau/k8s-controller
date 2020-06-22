@@ -1,0 +1,19 @@
+---
+version: '3'
+services:
+  go-web:
+    build:
+      context: .
+      dockerfile: go.dockerfile
+    command: ["tail -f /dev/null"]
+    environment:
+      - CONFIG_PATH=/workspaces/configs/server.json
+      - PORT=8000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.ssh/id_rsa:/home/willes/.ssh/id_rsa
+      - ..:/workspaces
+      - ../../vscodeExtensions/extensions:/home/willes/.vscode-server/extensions
+      - ../../vscodeExtensions/insiders:/home/willes/.vscode-server-insiders/extensions
+    ports:
+      - 8101:8000
