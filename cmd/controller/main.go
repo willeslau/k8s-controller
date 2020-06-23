@@ -11,6 +11,7 @@ import (
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
+	"github.com/willeslau/k8s-controller/internal/controller"
 	clientset "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned"
 	informers "github.com/willeslau/k8s-controller/pkg/client/informers/externalversions"
 	"github.com/willeslau/k8s-controller/pkg/signals"
@@ -45,8 +46,7 @@ func main() {
 
 	// kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	workerInformerFactory := informers.NewSharedInformerFactory(workerClient, time.Second*30)
-
-	controller := NewController(kubeClient, workerClient,
+	controller := controller.NewController(kubeClient, workerClient,
 		workerInformerFactory.Willesxm().V1().Workers())
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
