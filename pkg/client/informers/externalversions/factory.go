@@ -19,13 +19,13 @@ limitations under the License.
 package externalversions
 
 import (
-	versioned "k8s-controller/pkg/client/clientset/versioned"
-	internalinterfaces "k8s-controller/pkg/client/informers/externalversions/internalinterfaces"
-	worker "k8s-controller/pkg/client/informers/externalversions/worker"
 	reflect "reflect"
 	sync "sync"
 	time "time"
 
+	versioned "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/willeslau/k8s-controller/pkg/client/informers/externalversions/internalinterfaces"
+	worker "github.com/willeslau/k8s-controller/pkg/client/informers/externalversions/worker"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

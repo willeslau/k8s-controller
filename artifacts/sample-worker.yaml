@@ -1,9 +1,9 @@
-apiVersion: samplecontroller.k8s.io/v1
+apiVersion: willesxm.k8s.io/v1
 kind: Worker
 metadata:
   name: sample-worker
 spec:
   project: test-project
   concurrency: 10
-  cpu: 2
+  cpu: 3
   memory: 10

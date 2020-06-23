@@ -19,9 +19,8 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s-controller/pkg/apis/worker/v1"
-	"k8s-controller/pkg/client/clientset/versioned/scheme"
-
+	v1 "github.com/willeslau/k8s-controller/pkg/apis/worker/v1"
+	"github.com/willeslau/k8s-controller/pkg/client/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 

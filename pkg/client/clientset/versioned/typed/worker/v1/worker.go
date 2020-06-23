@@ -20,10 +20,10 @@ package v1
 
 import (
 	"context"
-	v1 "k8s-controller/pkg/apis/worker/v1"
-	scheme "k8s-controller/pkg/client/clientset/versioned/scheme"
 	"time"
 
+	v1 "github.com/willeslau/k8s-controller/pkg/apis/worker/v1"
+	scheme "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"

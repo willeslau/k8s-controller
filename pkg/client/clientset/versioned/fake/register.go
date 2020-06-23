@@ -19,8 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	willesxmv1 "k8s-controller/pkg/apis/worker/v1"
-
+	willesxmv1 "github.com/willeslau/k8s-controller/pkg/apis/worker/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

@@ -20,8 +20,8 @@ package versioned
 
 import (
 	"fmt"
-	willesxmv1 "k8s-controller/pkg/client/clientset/versioned/typed/worker/v1"
 
+	willesxmv1 "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned/typed/worker/v1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

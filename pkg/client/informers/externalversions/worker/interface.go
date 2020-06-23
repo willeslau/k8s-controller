@@ -19,8 +19,8 @@ limitations under the License.
 package worker
 
 import (
-	internalinterfaces "k8s-controller/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "k8s-controller/pkg/client/informers/externalversions/worker/v1"
+	internalinterfaces "github.com/willeslau/k8s-controller/pkg/client/informers/externalversions/internalinterfaces"
+	v1 "github.com/willeslau/k8s-controller/pkg/client/informers/externalversions/worker/v1"
 )
 
 // Interface provides access to each of this group's versions.

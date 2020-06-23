@@ -19,10 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "k8s-controller/pkg/client/clientset/versioned"
-	willesxmv1 "k8s-controller/pkg/client/clientset/versioned/typed/worker/v1"
-	fakewillesxmv1 "k8s-controller/pkg/client/clientset/versioned/typed/worker/v1/fake"
-
+	clientset "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned"
+	willesxmv1 "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned/typed/worker/v1"
+	fakewillesxmv1 "github.com/willeslau/k8s-controller/pkg/client/clientset/versioned/typed/worker/v1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
