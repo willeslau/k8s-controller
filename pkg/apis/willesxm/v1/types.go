@@ -5,20 +5,36 @@ import (
 )
 
 // +genclient
-// +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-type Student struct {
+// Worker the worker object
+type Worker struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              StudentSpec `json:"spec"`
+	// +optional
+	Status WorkerStatus `json:"status,omitempty"`
+	Spec   WorkerSpec   `json:"spec"`
 }
 
-type StudentSpec struct {
-	name   string `json:"name"`
-	school string `json:"school"`
+// WorkerStatus custom status
+type WorkerStatus struct {
+	Name string
+}
+
+// WorkerSpec the worker spec
+type WorkerSpec struct {
+	Project     string `json:"project"`
+	Concurrency int    `json:"concurrency"`
+	CPU         int    `json:"cpu"`
+	Memory      int    `json:"memory"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// StudentList is a list of Student resources
+// WorkerList is a list of Worker resources
+type WorkerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []Worker `json:"items"`
+}
