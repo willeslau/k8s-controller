@@ -6,11 +6,14 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	appsinformers "k8s.io/client-go/informers/apps/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	appslisters "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -42,6 +45,9 @@ type Controller struct {
 	workersLister listers.WorkerLister
 	workersSynced cache.InformerSynced
 
+	deploymentsLister appslisters.DeploymentLister
+	deploymentsSynced cache.InformerSynced
+
 	workqueue workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
@@ -51,7 +57,8 @@ type Controller struct {
 func NewController(
 	kubeclientset kubernetes.Interface,
 	workerclientset clientset.Interface,
-	workerInformer informers.WorkerInformer) *Controller {
+	workerInformer informers.WorkerInformer,
+	deploymentInformer appsinformers.DeploymentInformer) *Controller {
 
 	utilruntime.Must(workerscheme.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
@@ -61,16 +68,31 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	controller := &Controller{
-		kubeclientset:   kubeclientset,
-		workerclientset: workerclientset,
-		workersLister:   workerInformer.Lister(),
-		workersSynced:   workerInformer.Informer().HasSynced,
-		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workers"),
-		recorder:        recorder,
+		kubeclientset:     kubeclientset,
+		workerclientset:   workerclientset,
+		workersLister:     workerInformer.Lister(),
+		workersSynced:     workerInformer.Informer().HasSynced,
+		deploymentsLister: deploymentInformer.Lister(),
+		deploymentsSynced: deploymentInformer.Informer().HasSynced,
+		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workers"),
+		recorder:          recorder,
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Worker resources change
+	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		// Test code only
+		AddFunc: func(obj interface{}) {
+			fmt.Println(obj)
+		},
+		UpdateFunc: func(old, new interface{}) {
+			fmt.Println(old, new)
+		},
+		DeleteFunc: func(obj interface{}) {
+			fmt.Println(obj)
+		},
+	})
+
 	workerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueWorker,
 		UpdateFunc: func(old, new interface{}) {
@@ -80,7 +102,6 @@ func NewController(
 				// same version, there is no need to do anything
 				return
 			}
-			klog.V(4).Info(oldWorker)
 			controller.enqueueWorker(new)
 		},
 		DeleteFunc: controller.enqueueWorkerForDelete,
@@ -187,6 +208,14 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
+	// check the deployments
+	klog.Infof("namespace: ", namespace)
+	klog.Infof("key: ", key)
+	_, err = c.deploymentsLister.Deployments(namespace).List(labels.Everything())
+	if err != nil {
+		klog.Error(err)
+	}
+
 	// get the actual object from the cache
 	worker, err := c.workersLister.Workers(namespace).Get(name)
 	if err != nil {
@@ -199,9 +228,6 @@ func (c *Controller) syncHandler(key string) error {
 		utilruntime.HandleError(fmt.Errorf("failed to list worker by: %s/%s", namespace, name))
 		return err
 	}
-
-	klog.Infof("expected state: ", worker)
-
 	c.recorder.Event(worker, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }

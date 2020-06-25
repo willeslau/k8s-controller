@@ -5,5 +5,5 @@ metadata:
 spec:
   project: test-project
   concurrency: 10
-  cpu: 3
+  cpu: 1
   memory: 10
