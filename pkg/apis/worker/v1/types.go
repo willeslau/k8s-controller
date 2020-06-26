@@ -21,12 +21,31 @@ type WorkerStatus struct {
 	Name string
 }
 
+/*
+  resources:
+    concurrency: 10
+    cpu: 1
+    memory: 10
+    gpu: false
+  image: nginx
+  volumes:
+  - name: data
+    persistentVolumeClaim: data
+  volumeMounts:
+  - volume: data
+    mountPath: /home/data
+    subpath: sample
+*/
 // WorkerSpec the worker spec
 type WorkerSpec struct {
-	Project     string `json:"project"`
-	Concurrency int    `json:"concurrency"`
-	CPU         int    `json:"cpu"`
-	Memory      int    `json:"memory"`
+	Project   string `json:"project"`
+	Image     string `json:"image"`
+	Resources struct {
+		Concurrency int  `json:"concurrency"`
+		CPU         int  `json:"cpu"`
+		Memory      int  `json:"memory"`
+		GPU         bool `json:"gpu"`
+	} `json:"resources"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

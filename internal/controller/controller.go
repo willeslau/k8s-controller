@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
@@ -83,13 +84,11 @@ func NewController(
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		// Test code only
 		AddFunc: func(obj interface{}) {
-			fmt.Println(obj)
+			controller.addDeploymentController(obj)
 		},
 		UpdateFunc: func(old, new interface{}) {
-			fmt.Println(old, new)
 		},
 		DeleteFunc: func(obj interface{}) {
-			fmt.Println(obj)
 		},
 	})
 
@@ -108,6 +107,13 @@ func NewController(
 	})
 
 	return controller
+}
+
+// addDeploymentController is a test function for deployment
+func (c *Controller) addDeploymentController(obj interface{}) {
+	d := obj.(*appsv1.Deployment)
+	deploymentSelector, _ := metav1.LabelSelectorAsSelector(d.Spec.Selector)
+	fmt.Println(deploymentSelector)
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -211,10 +217,6 @@ func (c *Controller) syncHandler(key string) error {
 	// check the deployments
 	klog.Infof("namespace: ", namespace)
 	klog.Infof("key: ", key)
-	_, err = c.deploymentsLister.Deployments(namespace).List(labels.Everything())
-	if err != nil {
-		klog.Error(err)
-	}
 
 	// get the actual object from the cache
 	worker, err := c.workersLister.Workers(namespace).Get(name)

@@ -24,3 +24,6 @@ Get the master location by `kubectl cluster-info`
 ```bash
 ./controller --kubeconfig ~/.kube/config --master https://192.168.1.88:6443
 ```
+
+## Good References:
+1. Replica Controller: https://blog.csdn.net/yan234280533/article/details/78312620
