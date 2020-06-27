@@ -21,13 +21,7 @@ type WorkerStatus struct {
 	Name string
 }
 
-/*
-  resources:
-    concurrency: 10
-    cpu: 1
-    memory: 10
-    gpu: false
-  image: nginx
+/**
   volumes:
   - name: data
     persistentVolumeClaim: data
@@ -36,6 +30,7 @@ type WorkerStatus struct {
     mountPath: /home/data
     subpath: sample
 */
+
 // WorkerSpec the worker spec
 type WorkerSpec struct {
 	Project   string `json:"project"`
@@ -46,6 +41,12 @@ type WorkerSpec struct {
 		Memory      int  `json:"memory"`
 		GPU         bool `json:"gpu"`
 	} `json:"resources"`
+}
+
+// GenerateDeploymentName generates the name for the deployment
+// based on the worker
+func (w *Worker) GenerateDeploymentName() string {
+	return "worker-" + w.Name
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

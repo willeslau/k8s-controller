@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -30,8 +31,10 @@ import (
 const controllerAgentName = "worker-controller"
 
 const (
+	// SuccessSynced is what again? Donno for now
 	SuccessSynced = "Synced"
 
+	// MessageResourceSynced is the msg when worker resources are synced
 	MessageResourceSynced = "Worker synced successfully"
 )
 
@@ -68,7 +71,7 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
-	controller := &Controller{
+	ctl := &Controller{
 		kubeclientset:     kubeclientset,
 		workerclientset:   workerclientset,
 		workersLister:     workerInformer.Lister(),
@@ -82,18 +85,22 @@ func NewController(
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Worker resources change
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		// Test code only
-		AddFunc: func(obj interface{}) {
-			controller.addDeploymentController(obj)
-		},
+		AddFunc: ctl.handleObject,
 		UpdateFunc: func(old, new interface{}) {
+			// oldWorker := old.(*appsv1.Deployment)
+			// newWorker := new.(*appsv1.Deployment)
+			// if oldWorker.ResourceVersion == newWorker.ResourceVersion {
+			// 	// same version, there is no need to do anything
+			// 	return
+			// }
+			// ctl.handleObject(new)
 		},
 		DeleteFunc: func(obj interface{}) {
 		},
 	})
 
 	workerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueWorker,
+		AddFunc: ctl.enqueueWorker,
 		UpdateFunc: func(old, new interface{}) {
 			oldWorker := old.(*workerv1.Worker)
 			newWorker := new.(*workerv1.Worker)
@@ -101,12 +108,48 @@ func NewController(
 				// same version, there is no need to do anything
 				return
 			}
-			controller.enqueueWorker(new)
+			ctl.enqueueWorker(new)
 		},
-		DeleteFunc: controller.enqueueWorkerForDelete,
+		DeleteFunc: ctl.enqueueWorkerForDelete,
 	})
 
-	return controller
+	return ctl
+}
+
+func (c *Controller) handleObject(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
+			return
+		}
+		object, ok = tombstone.Obj.(metav1.Object)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
+			return
+		}
+		klog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
+	}
+	klog.V(4).Infof("Processing object: %s", object.GetName())
+	ownerRef := metav1.GetControllerOf(object)
+	if ownerRef != nil {
+		// If this object is not owned by a Foo, we should not do anything more
+		// with it.
+		if ownerRef.Kind != "Worker" {
+			return
+		}
+
+		foo, err := c.workersLister.Workers(object.GetNamespace()).Get(ownerRef.Name)
+		if err != nil {
+			klog.V(4).Infof("ignoring orphaned object '%s' of foo '%s'", object.GetSelfLink(), ownerRef.Name)
+			return
+		}
+
+		c.enqueueWorker(foo)
+		return
+	}
 }
 
 // addDeploymentController is a test function for deployment
@@ -214,24 +257,50 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	// check the deployments
-	klog.Infof("namespace: ", namespace)
-	klog.Infof("key: ", key)
-
 	// get the actual object from the cache
 	worker, err := c.workersLister.Workers(namespace).Get(name)
-	if err != nil {
-		// worker is deleted actually, perform the corresponding actions
-		if errors.IsNotFound(err) {
-			klog.Infof("Worker is deleted: %s/%s ...", namespace, name)
-			return nil
-		}
+	// worker is deleted actually, perform the corresponding actions
+	if errors.IsNotFound(err) {
+		klog.Infof("Worker is deleted: %s/%s ...", namespace, name)
+		// c.ensureDeploymentIsDeleted(worker)
+		return nil
+	}
 
+	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to list worker by: %s/%s", namespace, name))
 		return err
 	}
+
+	deployment, err := c.findDeploymentOfWorker(worker)
+	if errors.IsNotFound(err) {
+		klog.Infof("Worker found but deployment not found, create deployment")
+		deployment, err = c.kubeclientset.
+			AppsV1().
+			Deployments(worker.Namespace).
+			Create(context.TODO(), generateDeploymentFromWorker(worker), metav1.CreateOptions{})
+		// if success, err is nil
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	// Now comparing the expected Worker with the actual deployment
+	expectedDeployment := generateDeploymentFromWorker(worker)
+	compareDeployment(deployment, expectedDeployment)
 	c.recorder.Event(worker, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
+}
+
+func (c *Controller) findDeploymentOfWorker(worker *workerv1.Worker) (*appsv1.Deployment, error) {
+	name := worker.GenerateDeploymentName()
+
+	// TODO: replace the todo context with a proper context
+	d, err := c.kubeclientset.AppsV1().Deployments(worker.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 // enqueueWorker takes a Worker resource and converts it into a namespace/name

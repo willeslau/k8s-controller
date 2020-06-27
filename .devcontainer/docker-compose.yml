@@ -16,3 +16,5 @@ services:
       - ..:/workspaces
     ports:
       - 8101:8000
+    security_opt:
+      - "seccomp:unconfined"
