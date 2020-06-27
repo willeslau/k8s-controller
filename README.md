@@ -27,3 +27,5 @@ Get the master location by `kubectl cluster-info`
 
 ## Good References:
 1. Replica Controller: https://blog.csdn.net/yan234280533/article/details/78312620
+2. Deployment Controller: https://blog.hdls.me/15763918313590.html
+3. Deployment Controller Src: https://github.com/kubernetes/kubernetes/blob/27aca3f7c2f06925dd1890cd8b0522b775b0e323/pkg/controller/deployment/deployment_controller.go
