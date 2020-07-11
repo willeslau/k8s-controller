@@ -5,7 +5,6 @@ import (
 )
 
 // +genclient
-// +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Worker the worker object
@@ -13,12 +12,22 @@ type Worker struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec WorkerSpec `json:"spec"`
+	Spec   WorkerSpec   `json:"spec"`
+	Status WorkerStatus `json:"status"`
 }
 
 // WorkerStatus custom status
 type WorkerStatus struct {
-	Name string
+	Status            string
+	Replicas          *int32            `json:"replicas"`
+	Conditions        []WorkerCondition `json:"conditions"`
+}
+
+type WorkerCondition struct {
+	Reason            string
+	Message           string
+	Type              string
+	//CreationTimeStamp time.Time
 }
 
 // WorkerSpec the worker spec

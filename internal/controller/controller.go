@@ -2,11 +2,11 @@ package controller
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
@@ -83,13 +83,10 @@ func NewController(
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		// Test code only
 		AddFunc: func(obj interface{}) {
-			fmt.Println(obj)
 		},
 		UpdateFunc: func(old, new interface{}) {
-			fmt.Println(old, new)
 		},
 		DeleteFunc: func(obj interface{}) {
-			fmt.Println(obj)
 		},
 	})
 
@@ -201,6 +198,12 @@ func (c *Controller) processNextWorkItem() bool {
 
 // the actual processing logic lies here
 func (c *Controller) syncHandler(key string) error {
+	startTime := time.Now()
+	klog.V(4).Infof("Started syncing Worker %q (%v)", key, startTime)
+	defer func() {
+		klog.V(4).Infof("Finished syncing Worker %q (%v)", key, startTime)
+	}()
+
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -208,28 +211,47 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	// check the deployments
-	klog.Infof("namespace: ", namespace)
-	klog.Infof("key: ", key)
-	_, err = c.deploymentsLister.Deployments(namespace).List(labels.Everything())
-	if err != nil {
-		klog.Error(err)
-	}
-
 	// get the actual object from the cache
 	worker, err := c.workersLister.Workers(namespace).Get(name)
+	// worker is deleted actually, perform the corresponding actions
+	if errors.IsNotFound(err) {
+		klog.Infof("Worker is deleted: %s/%s ...", namespace, name)
+		return nil
+	}
 	if err != nil {
-		// worker is deleted actually, perform the corresponding actions
-		if errors.IsNotFound(err) {
-			klog.Infof("Worker is deleted: %s/%s ...", namespace, name)
-			return nil
-		}
-
 		utilruntime.HandleError(fmt.Errorf("failed to list worker by: %s/%s", namespace, name))
 		return err
 	}
+
+	// Deep copy Worker, do not touch the original object
+	w := worker.DeepCopy()
+
+	// list all the deployments linked to the worker
+	dList, err := c.getDeploymentsForWorker(w)
+	if err != nil {
+		return err
+	}
+	klog.V(4).Infof("Found %d deployments for worker %p", len(dList), key)
+
+	updateWorker(w, dList)
+
 	c.recorder.Event(worker, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
+}
+
+func (c *Controller) getDeploymentsForWorker(w *workerv1.Worker) ([]*appsv1.Deployment, error) {
+	dSelectors, err := createSelectorsFromLabels(w.ObjectMeta.Labels)
+	if err != nil {
+		return nil, err
+	}
+	dList, err := c.deploymentsLister.Deployments(w.Namespace).List(dSelectors)
+	if errors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return dList, nil
 }
 
 // enqueueWorker takes a Worker resource and converts it into a namespace/name
