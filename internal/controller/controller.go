@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
@@ -29,8 +31,10 @@ import (
 const controllerAgentName = "worker-controller"
 
 const (
+	// SuccessSynced is what again? Donno for now
 	SuccessSynced = "Synced"
 
+	// MessageResourceSynced is the msg when worker resources are synced
 	MessageResourceSynced = "Worker synced successfully"
 )
 
@@ -67,7 +71,7 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
-	controller := &Controller{
+	ctl := &Controller{
 		kubeclientset:     kubeclientset,
 		workerclientset:   workerclientset,
 		workersLister:     workerInformer.Lister(),
@@ -91,7 +95,7 @@ func NewController(
 	})
 
 	workerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueWorker,
+		AddFunc: ctl.enqueueWorker,
 		UpdateFunc: func(old, new interface{}) {
 			oldWorker := old.(*workerv1.Worker)
 			newWorker := new.(*workerv1.Worker)
@@ -99,12 +103,55 @@ func NewController(
 				// same version, there is no need to do anything
 				return
 			}
-			controller.enqueueWorker(new)
+			ctl.enqueueWorker(new)
 		},
-		DeleteFunc: controller.enqueueWorkerForDelete,
+		DeleteFunc: ctl.enqueueWorkerForDelete,
 	})
 
-	return controller
+	return ctl
+}
+
+func (c *Controller) handleObject(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
+			return
+		}
+		object, ok = tombstone.Obj.(metav1.Object)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
+			return
+		}
+		klog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
+	}
+	klog.V(4).Infof("Processing object: %s", object.GetName())
+	ownerRef := metav1.GetControllerOf(object)
+	if ownerRef != nil {
+		// If this object is not owned by a Foo, we should not do anything more
+		// with it.
+		if ownerRef.Kind != "Worker" {
+			return
+		}
+
+		foo, err := c.workersLister.Workers(object.GetNamespace()).Get(ownerRef.Name)
+		if err != nil {
+			klog.V(4).Infof("ignoring orphaned object '%s' of foo '%s'", object.GetSelfLink(), ownerRef.Name)
+			return
+		}
+
+		c.enqueueWorker(foo)
+		return
+	}
+}
+
+// addDeploymentController is a test function for deployment
+func (c *Controller) addDeploymentController(obj interface{}) {
+	d := obj.(*appsv1.Deployment)
+	deploymentSelector, _ := metav1.LabelSelectorAsSelector(d.Spec.Selector)
+	fmt.Println(deploymentSelector)
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -196,6 +243,32 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
+func (c *Controller) getDeploymentsForWorker(w *workerv1.Worker) ([]*appsv1.Deployment, error) {
+	dSelectors, err := createSelectorsFromLabels(w.ObjectMeta.Labels)
+	if err != nil {
+		return nil, err
+	}
+	dList, err := c.deploymentsLister.Deployments(w.Namespace).List(dSelectors)
+	if errors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return dList, nil
+}
+
+func (c *Controller) findDeploymentOfWorker(worker *workerv1.Worker) (*appsv1.Deployment, error) {
+	name := worker.GenerateDeploymentName()
+
+	// TODO: replace the todo context with a proper context
+	d, err := c.kubeclientset.AppsV1().Deployments(worker.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 // the actual processing logic lies here
 func (c *Controller) syncHandler(key string) error {
 	startTime := time.Now()
@@ -233,26 +306,13 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	klog.V(4).Infof("Found %d deployments for worker %p", len(dList), key)
 
-	updateWorker(w, dList)
+	//updateWorker(w, dList)
 
 	c.recorder.Event(worker, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
-func (c *Controller) getDeploymentsForWorker(w *workerv1.Worker) ([]*appsv1.Deployment, error) {
-	dSelectors, err := createSelectorsFromLabels(w.ObjectMeta.Labels)
-	if err != nil {
-		return nil, err
-	}
-	dList, err := c.deploymentsLister.Deployments(w.Namespace).List(dSelectors)
-	if errors.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return dList, nil
-}
+//func(c *Controller) updateWorker(w *workerv1.Worker, )
 
 // enqueueWorker takes a Worker resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be

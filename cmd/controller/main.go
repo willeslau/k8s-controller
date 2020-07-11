@@ -47,7 +47,7 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	workerInformerFactory := informers.NewSharedInformerFactory(workerClient, time.Second*30)
-	controller := controller.NewController(kubeClient, workerClient,
+	c := controller.NewController(kubeClient, workerClient,
 		workerInformerFactory.Willesxm().V1().Workers(),
 		kubeInformerFactory.Apps().V1().Deployments())
 
@@ -56,7 +56,7 @@ func main() {
 	kubeInformerFactory.Start(stopCh)
 	workerInformerFactory.Start(stopCh)
 
-	if err = controller.Run(2, stopCh); err != nil {
+	if err = c.Run(2, stopCh); err != nil {
 		klog.Fatalf("Error running controller: %s", err.Error())
 	}
 }

@@ -3,9 +3,19 @@ kind: Worker
 metadata:
   name: sample-worker
   labels:
-    project: test-project
+    app: rpc-server
 spec:
   project: test-project
-  concurrency: 10
-  cpu: 1
-  memory: 10
+  resources:
+    concurrency: 10
+    cpu: 1
+    memory: 10
+    gpu: false
+  image: nginx
+  # volumes:
+  # - name: data
+  #   persistentVolumeClaim: data
+  # volumeMounts:
+  # - volume: data
+  #   mountPath: /home/data
+  #   subpath: sample

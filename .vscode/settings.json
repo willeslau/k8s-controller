@@ -1,0 +1,16 @@
+{
+    "go.formatTool": "goimports",
+    "explorer.confirmDragAndDrop": false,
+    "go.useLanguageServer": true,
+    "go.delveConfig": {
+        "dlvLoadConfig": {
+            "followPointers": true,
+            // this controlls how much of the nested object to display
+            // the deeper it is, the slower it is.
+            "maxVariableRecurse": 2,
+            "maxStringLen": 64,
+            "maxArrayValues": 64,
+            "maxStructFields": -1
+        }
+    }
+}
