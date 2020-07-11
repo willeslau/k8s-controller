@@ -55,6 +55,8 @@ type Controller struct {
 	workqueue workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
+
+	deploymentRobin DeploymentRobin
 }
 
 // NewController returns a new worker controller
@@ -71,6 +73,8 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
+	dRobin := DeploymentRobin{kubeclientset: kubeclientset}
+
 	ctl := &Controller{
 		kubeclientset:     kubeclientset,
 		workerclientset:   workerclientset,
@@ -80,6 +84,7 @@ func NewController(
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workers"),
 		recorder:          recorder,
+		deploymentRobin: dRobin,
 	}
 
 	klog.Info("Setting up event handlers")
@@ -250,10 +255,13 @@ func (c *Controller) getDeploymentsForWorker(w *workerv1.Worker) ([]*appsv1.Depl
 	}
 	dList, err := c.deploymentsLister.Deployments(w.Namespace).List(dSelectors)
 	if errors.IsNotFound(err) {
-		return nil, nil
+		return make([]*appsv1.Deployment, 0), nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if dList == nil {
+		return make([]*appsv1.Deployment, 0), nil
 	}
 	return dList, nil
 }
@@ -288,7 +296,7 @@ func (c *Controller) syncHandler(key string) error {
 	worker, err := c.workersLister.Workers(namespace).Get(name)
 	// worker is deleted actually, perform the corresponding actions
 	if errors.IsNotFound(err) {
-		klog.Infof("Worker is deleted: %s/%s ...", namespace, name)
+		klog.V(4).Infof("Worker is deleted: %s/%s ...", namespace, name)
 		return nil
 	}
 	if err != nil {
@@ -306,13 +314,38 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	klog.V(4).Infof("Found %d deployments for worker %p", len(dList), key)
 
-	//updateWorker(w, dList)
+	isUpdated, dList, err := c.updateWorker(w, dList)
+	if err != nil {
+		return err
+	}
+
+	// There are no updates, return straight away
+	if !isUpdated { return nil }
+
+	err = c.updateStatus(w, dList)
+	if err != nil { return err }
 
 	c.recorder.Event(worker, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
-//func(c *Controller) updateWorker(w *workerv1.Worker, )
+func (c *Controller) updateStatus(w *workerv1.Worker, dList []*appsv1.Deployment) error {
+	return nil
+}
+
+func (c *Controller) updateWorker(w *workerv1.Worker, dList []*appsv1.Deployment) (bool, []*appsv1.Deployment, error) {
+	latestD := findLatestDeployment(dList)
+	isUpdated := false
+
+	if latestD == nil {
+		newD, err := c.deploymentRobin.CreateDeploymentFromWorker(w)
+		if err != nil { return false, nil, err }
+		dList = append(dList, newD)
+		isUpdated = true
+	}
+
+	return isUpdated, dList, nil
+}
 
 // enqueueWorker takes a Worker resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
