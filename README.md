@@ -17,7 +17,8 @@ worker:v1
 K8S generated code should be populated.
 
 ## Write the controller
-The code is in `internal/controller`
+The code is in `internal/controller`, the state machine (work in progress) is 
+![State Machine](images/StateMachine.png)
 
 ## Launch the controller
 Get the master location by `kubectl cluster-info`
