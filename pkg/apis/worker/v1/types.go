@@ -19,14 +19,16 @@ type Worker struct {
 // WorkerStatus custom status
 type WorkerStatus struct {
 	Status            string
-	Replicas          *int32            `json:"replicas"`
+	TargetReplicas    int32             `json:"targetReplicas"`
+	AvailableReplicas int32             `json:"availableReplicas"`
+	UpdatedReplicas   int32             `json:"updatedReplicas"`
 	Conditions        []WorkerCondition `json:"conditions"`
 }
 
 type WorkerCondition struct {
-	Reason            string
-	Message           string
-	Type              string
+	Reason  string
+	Message string
+	Type    string
 	//CreationTimeStamp time.Time
 }
 
@@ -44,6 +46,7 @@ type WorkerCondition struct {
 type WorkerSpec struct {
 	Project   string `json:"project"`
 	Image     string `json:"image"`
+	Replicas  int32  `json:"replicas"`
 	Resources struct {
 		Concurrency int  `json:"concurrency"`
 		CPU         int  `json:"cpu"`
@@ -55,7 +58,7 @@ type WorkerSpec struct {
 // GenerateDeploymentName generates the name for the deployment
 // based on the worker
 func (w *Worker) GenerateDeploymentName() string {
-	return "worker-" + w.Name
+	return w.Name
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

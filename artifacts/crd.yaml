@@ -9,3 +9,5 @@ spec:
     kind: Worker
     plural: workers
   scope: Namespaced
+  subresources:
+    status: {}

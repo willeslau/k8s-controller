@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -28,7 +27,12 @@ import (
 	listers "github.com/willeslau/k8s-controller/pkg/client/listers/worker/v1"
 )
 
-const controllerAgentName = "worker-controller"
+const (
+	controllerAgentName = "worker-controller"
+
+	// ControllerKind is the type of controller
+	ControllerKind = "Worker"
+)
 
 const (
 	// SuccessSynced is what again? Donno for now
@@ -55,6 +59,8 @@ type Controller struct {
 	workqueue workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
+
+	deploymentRobin DeploymentRobin
 }
 
 // NewController returns a new worker controller
@@ -71,6 +77,8 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
+	dRobin := DeploymentRobin{kubeclientset: kubeclientset, wLister: workerInformer.Lister()}
+
 	ctl := &Controller{
 		kubeclientset:     kubeclientset,
 		workerclientset:   workerclientset,
@@ -80,14 +88,14 @@ func NewController(
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workers"),
 		recorder:          recorder,
+		deploymentRobin: dRobin,
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Worker resources change
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		// Test code only
-		AddFunc: func(obj interface{}) {
-		},
+		AddFunc: ctl.addDeployment,
 		UpdateFunc: func(old, new interface{}) {
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -109,6 +117,21 @@ func NewController(
 	})
 
 	return ctl
+}
+
+func (c *Controller) addDeployment(obj interface{}) {
+	d := obj.(*appsv1.Deployment)
+
+	//if d.DeletionTimestamp != nil {
+	//	c.enqueueWorkerForDelete(obj)
+	//	return
+	//}
+
+	if ownerRef := metav1.GetControllerOf(d); ownerRef != nil {
+		w := c.deploymentRobin.resolveControllerRef(d.Namespace, ownerRef)
+		if w == nil { return }
+		c.enqueueWorker(w)
+	}
 }
 
 func (c *Controller) handleObject(obj interface{}) {
@@ -244,29 +267,22 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 func (c *Controller) getDeploymentsForWorker(w *workerv1.Worker) ([]*appsv1.Deployment, error) {
-	dSelectors, err := createSelectorsFromLabels(w.ObjectMeta.Labels)
+	dLabels := generateLabelsForDeployment(w)
+	dSelectors, err := createSelectorsFromLabels(dLabels)
 	if err != nil {
 		return nil, err
 	}
 	dList, err := c.deploymentsLister.Deployments(w.Namespace).List(dSelectors)
 	if errors.IsNotFound(err) {
-		return nil, nil
+		return make([]*appsv1.Deployment, 0), nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if dList == nil {
+		return make([]*appsv1.Deployment, 0), nil
 	}
 	return dList, nil
-}
-
-func (c *Controller) findDeploymentOfWorker(worker *workerv1.Worker) (*appsv1.Deployment, error) {
-	name := worker.GenerateDeploymentName()
-
-	// TODO: replace the todo context with a proper context
-	d, err := c.kubeclientset.AppsV1().Deployments(worker.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return d, nil
 }
 
 // the actual processing logic lies here
@@ -288,7 +304,7 @@ func (c *Controller) syncHandler(key string) error {
 	worker, err := c.workersLister.Workers(namespace).Get(name)
 	// worker is deleted actually, perform the corresponding actions
 	if errors.IsNotFound(err) {
-		klog.Infof("Worker is deleted: %s/%s ...", namespace, name)
+		klog.V(4).Infof("Worker is deleted: %s/%s ...", namespace, name)
 		return nil
 	}
 	if err != nil {
@@ -306,13 +322,18 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	klog.V(4).Infof("Found %d deployments for worker %p", len(dList), key)
 
-	//updateWorker(w, dList)
+	_, err = c.updateWorker(w, dList)
+	if err != nil {
+		return err
+	}
 
 	c.recorder.Event(worker, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
-//func(c *Controller) updateWorker(w *workerv1.Worker, )
+func (c *Controller) syncStatus(w *workerv1.Worker, dList []*appsv1.Deployment) error {
+	return nil
+}
 
 // enqueueWorker takes a Worker resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be

@@ -6,6 +6,7 @@ metadata:
     app: rpc-server
 spec:
   project: test-project
+  replicas: 1
   resources:
     concurrency: 10
     cpu: 1
