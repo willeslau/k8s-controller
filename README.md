@@ -25,6 +25,10 @@ Get the master location by `kubectl cluster-info`
 ./controller --kubeconfig ~/.kube/config --master https://192.168.1.88:6443
 ```
 
+## Lessions from Deployment-Controller
+1. New status is derived only based on current deployment and all the replicas sets,
+        but not the "past" states.
+
 ## Good References:
 1. Replica Controller: https://blog.csdn.net/yan234280533/article/details/78312620
 2. Deployment Controller: https://blog.hdls.me/15763918313590.html

@@ -56,7 +56,7 @@ func main() {
 	kubeInformerFactory.Start(stopCh)
 	workerInformerFactory.Start(stopCh)
 
-	if err = c.Run(2, stopCh); err != nil {
+	if err = c.Run(1, stopCh); err != nil {
 		klog.Fatalf("Error running controller: %s", err.Error())
 	}
 }
