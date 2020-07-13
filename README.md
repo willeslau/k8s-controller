@@ -22,7 +22,7 @@ The code is in `internal/controller`
 ## Launch the controller
 Get the master location by `kubectl cluster-info`
 ```bash
-./controller --kubeconfig ~/.kube/config --master https://192.168.1.88:6443
+./controller --kubeconfig ~/.kube/config
 ```
 
 ## Lessions from Deployment-Controller
