@@ -2,19 +2,11 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	workerv1 "github.com/willeslau/k8s-controller/pkg/apis/worker/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (c *Controller) updateWorkerStatus(w *workerv1.Worker) (*appsv1.Deployment, error) {
-	newD, err := c.deploymentRobin.createDeploymentFromWorker(w)
-	if err != nil {
-		return nil, err
-	}
-	return newD, nil
-}
 
 func (c *Controller) createNewWorker(w *workerv1.Worker) (*appsv1.Deployment, error) {
 	newD, err := c.deploymentRobin.createDeploymentFromWorker(w)
@@ -36,42 +28,47 @@ func (c *Controller) completeUpdate(w *workerv1.Worker) (*workerv1.Worker, error
 
 func (c *Controller) updateWorker(w *workerv1.Worker, dList []*appsv1.Deployment) ([]*appsv1.Deployment, error) {
 	latestD := findLatestDeployment(dList)
+	var err error
 
-	if latestD == nil {
-		newD, err := c.createNewWorker(w)
+	switch {
+	case isNewWorker(w, latestD):
+		latestD, err = c.deploymentRobin.createDeploymentFromWorker(w)
 		if err != nil { return nil, err }
-		dList = append(dList, newD)
-		return dList, nil
+	case isWorkerUpdated(w, latestD):
+		latestD, err = c.deploymentRobin.updateDeploymentOfWorker(w, latestD)
 	}
 
-	switch compareWorkerAndDeployment(w, latestD).(type) {
-	case *WorkerUpdated:
-		fmt.Println("")
-	case *WorkerUpdateCompleted:
-		_, err := c.completeUpdate(w)
-		if err != nil { return nil, err }
-	case *WorkerUpdating:
-		fmt.Println("progressing")
-	//case "failed":
-	//	fmt.Println("failed")
-	default:
-		fmt.Println("TODO")
-	}
+	status, err := calculateWorkerStatus(w, latestD, dList)
+	if err != nil { return nil, err }
+
+	w.Status = *status
+	w, err = c.syncWorkerStatus(w)
+	if err != nil { return nil, err }
+
 	return dList, nil
 }
 
-func compareWorkerAndDeployment(worker *workerv1.Worker, oldDeployment *appsv1.Deployment) WorkerUpdateEvent {
-	newDeployment := generateDeploymentFromWorker(worker)
-	equal := compareDeployments(newDeployment, oldDeployment)
-	if !equal { return &WorkerUpdated{newDeployment} }
+func calculateWorkerStatus(worker *workerv1.Worker, currentDeployment *appsv1.Deployment, dList []*appsv1.Deployment) (*workerv1.WorkerStatus, error) {
+	d := findMatchDeployment(currentDeployment, dList)
 
-	if worker.Spec.Replicas == oldDeployment.Status.ReadyReplicas {
-		return &WorkerUpdateCompleted{oldDeployment}
-	}
+	if d == nil { return newCreatedStatus(worker), nil }
 
-	// TODO: add progressing status
-	// TODO: add failure deployment
-	return &WorkerUpdating{oldDeployment}
+	status := worker.Status.DeepCopy()
+	updateProgressingCondition(status, worker, currentDeployment)
+	updateAvailabilityCondition(status, worker, currentDeployment)
+
+	return status, nil
+}
+
+// isNewWorker checks if the worker passed in is new
+func isNewWorker(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) bool {
+	return currentDeployment == nil && worker.DeletionTimestamp == nil
+}
+
+// isWorkerUpdated checks if the worker is updated
+func isWorkerUpdated(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) bool {
+	deployment := generateDeploymentFromWorker(worker)
+	return compareDeploymentSpecs(deployment, currentDeployment)
 }
 
 // syncWorkerStatus syncs the stauts of the worker with the api server

@@ -88,6 +88,20 @@ func NewDeploymentRobin(kubeclientset kubernetes.Interface, wLister workerlister
 	return &DeploymentRobin{kubeclientset: kubeclientset, wLister: wLister}
 }
 
+// updateDeploymentOfWorker updates the deployment of the worker with the deployment passed in
+func (d *DeploymentRobin) updateDeploymentOfWorker(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) (*appsv1.Deployment, error) {
+	deployment, err := d.kubeclientset.
+		AppsV1().
+		Deployments(worker.Namespace).
+		Update(context.TODO(), currentDeployment, metav1.UpdateOptions{})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return deployment, nil
+}
+
 // createDeploymentFromWorker will create the deployment from the worker
 func (d *DeploymentRobin) createDeploymentFromWorker(w *workerv1.Worker) (*appsv1.Deployment, error) {
 	deployment, err := d.kubeclientset.
@@ -117,7 +131,7 @@ func (d *DeploymentRobin) resolveControllerRef(namespace string, ownerRef *metav
 	return w
 }
 
-func compareDeployments(newDeployment *appsv1.Deployment, oldDeployment *appsv1.Deployment) bool {
+func compareDeploymentSpecs(newDeployment *appsv1.Deployment, oldDeployment *appsv1.Deployment) bool {
 	newHash := hashDeployment(newDeployment)
 	oldHash := hashDeployment(oldDeployment)
 	return newHash == oldHash
@@ -168,4 +182,16 @@ func generateDeploymentFromWorker(worker *workerv1.Worker) *appsv1.Deployment {
 			},
 		},
 	}
+}
+
+// findMatchDeployment finds the ref deployment in a list of deployments
+func findMatchDeployment(refDeployment *appsv1.Deployment, dList []*appsv1.Deployment) *appsv1.Deployment {
+	if dList == nil { return nil }
+
+	for i := range dList {
+		d := dList[i]
+		if d.UID == refDeployment.UID { return d }
+	}
+
+	return nil
 }

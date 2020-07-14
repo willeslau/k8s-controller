@@ -1,10 +1,15 @@
 package controller
 
-import workerv1 "github.com/willeslau/k8s-controller/pkg/apis/worker/v1"
+import (
+	"fmt"
+	workerv1 "github.com/willeslau/k8s-controller/pkg/apis/worker/v1"
+	appsv1 "k8s.io/api/apps/v1"
+)
 
-func newStatus() *workerv1.WorkerStatus {
-	return nil
-}
+const (
+	PROGRESSING = "progressing"
+	AVAILABILITY = "availability"
+)
 
 func newCreatedStatus(w *workerv1.Worker) *workerv1.WorkerStatus {
 	condition := workerv1.WorkerCondition{
@@ -40,6 +45,31 @@ func newCompletedStatus(w *workerv1.Worker) *workerv1.WorkerStatus {
 	}
 }
 
-func newCondition() *workerv1.WorkerCondition {
-	return nil
+// updateProgressingCondition updates the progress portion of the conditions
+func updateProgressingCondition(status *workerv1.WorkerStatus, worker *workerv1.Worker, currentDeployment *appsv1.Deployment) {
+
+}
+
+// updateAvailabilityCondition updates the availability portion of the conditions
+func updateAvailabilityCondition(status *workerv1.WorkerStatus, worker *workerv1.Worker, currentDeployment *appsv1.Deployment) {
+	currentReplicas := currentDeployment.Status.ReadyReplicas
+	requiredReplicas := worker.Spec.Replicas
+
+	condition := workerv1.WorkerCondition{Type: AVAILABILITY}
+	if currentReplicas >= requiredReplicas {
+		condition.Reason = "RequiredReplicasAvailable"
+		condition.Message = fmt.Sprintf("Worker has reached the required replicas %d", requiredReplicas)
+	} else {
+		condition.Reason = "RequiredReplicasUnavailable"
+		condition.Message = fmt.Sprintf("Worker has reached the %d replicas, but not the required %d", currentReplicas, requiredReplicas)
+	}
+
+	for i := range status.Conditions {
+		if status.Conditions[i].Type == AVAILABILITY {
+			status.Conditions[i] = condition
+			return
+		}
+	}
+
+	status.Conditions = append(status.Conditions, condition)
 }
