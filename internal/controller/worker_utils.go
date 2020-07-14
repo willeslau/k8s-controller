@@ -54,6 +54,7 @@ func calculateWorkerStatus(worker *workerv1.Worker, currentDeployment *appsv1.De
 	if d == nil { return newCreatedStatus(worker), nil }
 
 	status := worker.Status.DeepCopy()
+	updateReplicaCounts(status, worker, currentDeployment)
 	updateProgressingCondition(status, worker, currentDeployment)
 	updateAvailabilityCondition(status, worker, currentDeployment)
 
