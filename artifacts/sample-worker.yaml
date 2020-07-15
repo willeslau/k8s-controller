@@ -10,7 +10,7 @@ spec:
   resources:
     concurrency: 10
     cpu: 1
-    memory: 10
+    memory: 200
     gpu: false
   image: nginx
   # volumes:

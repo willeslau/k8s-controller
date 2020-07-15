@@ -77,7 +77,7 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
-	dRobin := DeploymentRobin{kubeclientset: kubeclientset, wLister: workerInformer.Lister()}
+	dRobin := newDeploymentRobin(kubeclientset, workerInformer.Lister())
 
 	ctl := &Controller{
 		kubeclientset:     kubeclientset,
@@ -88,18 +88,24 @@ func NewController(
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workers"),
 		recorder:          recorder,
-		deploymentRobin: dRobin,
+		deploymentRobin: *dRobin,
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Worker resources change
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		// Test code only
-		AddFunc: ctl.addDeployment,
+		AddFunc: ctl.handleDeployment,
 		UpdateFunc: func(old, new interface{}) {
+			oldD := old.(*appsv1.Deployment)
+			newD := new.(*appsv1.Deployment)
+			if oldD.ResourceVersion == newD.ResourceVersion {
+				// same version, there is no need to do anything
+				return
+			}
+			ctl.handleDeployment(new)
 		},
-		DeleteFunc: func(obj interface{}) {
-		},
+		DeleteFunc: ctl.handleDeployment,
 	})
 
 	workerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -119,7 +125,7 @@ func NewController(
 	return ctl
 }
 
-func (c *Controller) addDeployment(obj interface{}) {
+func (c *Controller) handleDeployment(obj interface{}) {
 	d := obj.(*appsv1.Deployment)
 
 	//if d.DeletionTimestamp != nil {

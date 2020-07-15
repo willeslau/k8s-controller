@@ -26,8 +26,13 @@ func (c *Controller) completeUpdate(w *workerv1.Worker) (*workerv1.Worker, error
 	return c.syncWorkerStatus(w)
 }
 
+func filter(d *appsv1.Deployment) bool {
+	// not deleted
+	return d.DeletionTimestamp == nil
+}
+
 func (c *Controller) updateWorker(w *workerv1.Worker, dList []*appsv1.Deployment) ([]*appsv1.Deployment, error) {
-	latestD := findLatestDeployment(dList)
+	latestD := findLatestDeployment(dList, filter)
 	var err error
 
 	switch {
@@ -35,11 +40,14 @@ func (c *Controller) updateWorker(w *workerv1.Worker, dList []*appsv1.Deployment
 		latestD, err = c.deploymentRobin.createDeploymentFromWorker(w)
 		if err != nil { return nil, err }
 	case isWorkerUpdated(w, latestD):
-		latestD, err = c.deploymentRobin.updateDeploymentOfWorker(w, latestD)
+		latestD, err = c.deploymentRobin.updateDeploymentOfWorker(w)
+		if err != nil { return nil, err }
 	}
 
 	status, err := calculateWorkerStatus(w, latestD, dList)
 	if err != nil { return nil, err }
+
+	if isSameStatus(&w.Status, status) { return dList, nil }
 
 	w.Status = *status
 	w, err = c.syncWorkerStatus(w)
@@ -51,10 +59,14 @@ func (c *Controller) updateWorker(w *workerv1.Worker, dList []*appsv1.Deployment
 func calculateWorkerStatus(worker *workerv1.Worker, currentDeployment *appsv1.Deployment, dList []*appsv1.Deployment) (*workerv1.WorkerStatus, error) {
 	d := findMatchDeployment(currentDeployment, dList)
 
-	if d == nil { return newCreatedStatus(worker), nil }
+	var status *workerv1.WorkerStatus
+	if d == nil {
+		status = newCreatedStatus(worker)
+	} else {
+		status = worker.Status.DeepCopy()
+		updateReplicaCounts(status, worker, currentDeployment)
+	}
 
-	status := worker.Status.DeepCopy()
-	updateReplicaCounts(status, worker, currentDeployment)
 	updateProgressingCondition(status, worker, currentDeployment)
 	updateAvailabilityCondition(status, worker, currentDeployment)
 
@@ -69,7 +81,8 @@ func isNewWorker(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) 
 // isWorkerUpdated checks if the worker is updated
 func isWorkerUpdated(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) bool {
 	deployment := generateDeploymentFromWorker(worker)
-	return compareDeploymentSpecs(deployment, currentDeployment)
+	res := !isSameDeploymentSpecs(deployment, currentDeployment)
+	return res
 }
 
 // syncWorkerStatus syncs the stauts of the worker with the api server

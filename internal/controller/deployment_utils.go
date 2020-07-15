@@ -6,6 +6,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"hash/fnv"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -70,12 +71,21 @@ func orderByCreationTimeStampAndName(dList []*appsv1.Deployment) []*appsv1.Deplo
 	return dList
 }
 
-func findLatestDeployment(dList []*appsv1.Deployment) *appsv1.Deployment {
+func findLatestDeployment(dList []*appsv1.Deployment, filter func(deployment *appsv1.Deployment) bool) *appsv1.Deployment {
 	if dList == nil || len(dList) == 0 {
 		return nil
 	}
-	dList = orderByCreationTimeStampAndName(dList)
-	return dList[0]
+
+	var newList []*appsv1.Deployment
+	for _, d := range dList {
+		if !filter(d) { continue }
+		newList = append(newList, d)
+	}
+
+	if newList == nil { return nil }
+
+	newList = orderByCreationTimeStampAndName(newList)
+	return newList[0]
 }
 
 // DeploymentRobin is a collection of helper functions that require k8s client
@@ -84,16 +94,17 @@ type DeploymentRobin struct {
 	wLister       workerlister.WorkerLister
 }
 
-func NewDeploymentRobin(kubeclientset kubernetes.Interface, wLister workerlister.WorkerLister) *DeploymentRobin {
+func newDeploymentRobin(kubeclientset kubernetes.Interface, wLister workerlister.WorkerLister) *DeploymentRobin {
 	return &DeploymentRobin{kubeclientset: kubeclientset, wLister: wLister}
 }
 
-// updateDeploymentOfWorker updates the deployment of the worker with the deployment passed in
-func (d *DeploymentRobin) updateDeploymentOfWorker(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) (*appsv1.Deployment, error) {
+// updateDeploymentOfWorker updates the deployment of the worker
+func (d *DeploymentRobin) updateDeploymentOfWorker(worker *workerv1.Worker) (*appsv1.Deployment, error) {
+	deployment := generateDeploymentFromWorker(worker)
 	deployment, err := d.kubeclientset.
 		AppsV1().
 		Deployments(worker.Namespace).
-		Update(context.TODO(), currentDeployment, metav1.UpdateOptions{})
+		Update(context.TODO(), deployment, metav1.UpdateOptions{})
 
 	if err != nil {
 		return nil, err
@@ -131,7 +142,9 @@ func (d *DeploymentRobin) resolveControllerRef(namespace string, ownerRef *metav
 	return w
 }
 
-func compareDeploymentSpecs(newDeployment *appsv1.Deployment, oldDeployment *appsv1.Deployment) bool {
+// isSameDeploymentSpecs checks if the two deployments have the same specs, such as
+// replicas, pod templates
+func isSameDeploymentSpecs(newDeployment *appsv1.Deployment, oldDeployment *appsv1.Deployment) bool {
 	newHash := hashDeployment(newDeployment)
 	oldHash := hashDeployment(oldDeployment)
 	return newHash == oldHash
@@ -142,6 +155,15 @@ func generateLabelsForDeployment(worker *workerv1.Worker) map[string]string {
 	wLabels := worker.ObjectMeta.Labels
 	wLabels["createdBy"] = worker.Name
 	return wLabels
+}
+
+func deriveResourcesFromWorker(worker *workerv1.Worker) *corev1.ResourceRequirements {
+	cpu := resource.NewQuantity(int64(worker.Spec.Resources.CPU), resource.DecimalSI)
+	cpu.String()
+	memory := resource.NewScaledQuantity(int64(worker.Spec.Resources.Memory), resource.Mega)
+	memory.String()
+	request := corev1.ResourceList{corev1.ResourceCPU: *cpu, corev1.ResourceMemory: *memory}
+	return &corev1.ResourceRequirements{Requests: request, Limits: request}
 }
 
 func generateDeploymentFromWorker(worker *workerv1.Worker) *appsv1.Deployment {
@@ -173,6 +195,7 @@ func generateDeploymentFromWorker(worker *workerv1.Worker) *appsv1.Deployment {
 						{
 							Name:  name,
 							Image: worker.Spec.Image,
+							Resources: *deriveResourcesFromWorker(worker),
 							TerminationMessagePath: "/dev/termination-log",
 							TerminationMessagePolicy: "File",
 							ImagePullPolicy: "Always",

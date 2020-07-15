@@ -21,15 +21,8 @@ const (
 )
 
 func newCreatedStatus(w *workerv1.Worker) *workerv1.WorkerStatus {
-	condition := workerv1.WorkerCondition{
-		Reason:  "NewWorkerCreated",
-		Message: "New worker created",
-		Type:    "Progressing",
-	}
 	conditions := make([]workerv1.WorkerCondition, 0)
-	conditions = append(conditions, condition)
 	return &workerv1.WorkerStatus{
-		Status: "Created",
 		TargetReplicas: w.Spec.Replicas,
 		AvailableReplicas: int32(0),
 		UpdatedReplicas: int32(0),
@@ -54,6 +47,46 @@ func newCompletedStatus(w *workerv1.Worker) *workerv1.WorkerStatus {
 	}
 }
 
+// findStatusCondition
+func findStatusCondition(conditions *[]workerv1.WorkerCondition, conditionType string) *workerv1.WorkerCondition {
+	for _, c := range *conditions {
+		if c.Type == conditionType {
+			return &c
+		}
+	}
+	return nil
+}
+
+// isSameStatusCondition compares if two status conditions are the same
+func isSameStatusCondition(refCondition *workerv1.WorkerCondition, tarCondition *workerv1.WorkerCondition) bool {
+	if refCondition == nil && tarCondition == nil { return true }
+	if (refCondition == nil && tarCondition != nil) ||
+		(refCondition != nil && tarCondition == nil) { return false }
+
+	return refCondition.Type == tarCondition.Type &&
+		refCondition.Message == tarCondition.Message &&
+		refCondition.Reason == tarCondition.Reason
+}
+
+// isSameStatus compare the two input statuses
+func isSameStatus(refStatus *workerv1.WorkerStatus, tarStatus *workerv1.WorkerStatus) bool {
+	if refStatus.UpdatedReplicas != tarStatus.UpdatedReplicas ||
+		refStatus.AvailableReplicas != tarStatus.AvailableReplicas ||
+		refStatus.TargetReplicas != tarStatus.TargetReplicas {
+		return false
+	}
+
+	// compare PROGRESSING
+	refProgressing := findStatusCondition(&refStatus.Conditions, PROGRESSING)
+	tarProgressing := findStatusCondition(&tarStatus.Conditions, PROGRESSING)
+	if !isSameStatusCondition(refProgressing, tarProgressing) { return false }
+
+	// compare AVAILABILITY
+	refAvailability := findStatusCondition(&refStatus.Conditions, AVAILABILITY)
+	tarAvailability := findStatusCondition(&tarStatus.Conditions, AVAILABILITY)
+	return isSameStatusCondition(refAvailability, tarAvailability)
+}
+
 // updateReplicaCounts updates the replica counts in the status of the worker
 func updateReplicaCounts(status *workerv1.WorkerStatus, worker *workerv1.Worker, currentDeployment *appsv1.Deployment) {
 	status.TargetReplicas = worker.Spec.Replicas
@@ -63,7 +96,7 @@ func updateReplicaCounts(status *workerv1.WorkerStatus, worker *workerv1.Worker,
 
 func assignCondition(status *workerv1.WorkerStatus, condition workerv1.WorkerCondition) *workerv1.WorkerStatus {
 	for i := range status.Conditions {
-		if status.Conditions[i].Type == AVAILABILITY {
+		if status.Conditions[i].Type == condition.Type {
 			status.Conditions[i] = condition
 			return status
 		}
@@ -100,10 +133,10 @@ func updateAvailabilityCondition(status *workerv1.WorkerStatus, worker *workerv1
 
 	condition := workerv1.WorkerCondition{Type: AVAILABILITY}
 	if currentReplicas >= requiredReplicas {
-		condition.Reason = "RequiredReplicasAvailable"
+		condition.Reason = REQUIRED_REPLICAS_AVAILABLE
 		condition.Message = fmt.Sprintf("Worker has reached the required replicas %d", requiredReplicas)
 	} else {
-		condition.Reason = "RequiredReplicasUnavailable"
+		condition.Reason = REQUIRED_REPLICAS_UNAVAILABLE
 		condition.Message = fmt.Sprintf("Worker has reached the %d replicas, but not the required %d", currentReplicas, requiredReplicas)
 	}
 
