@@ -27,8 +27,9 @@ Get the master location by `kubectl cluster-info`
 ```
 
 ## Lessions from Deployment-Controller
-1. New status is derived only based on current deployment and all the replicas sets,
-        but not the "past" states.
+1. New status is derived only based on current deployment and all the replicas sets but not the "past" states. In this case, 
+try to set the status purely based on the current deployment and worker. Think about what parameters are needed to deduce the 
+status!
 
 ## Good References:
 1. Replica Controller: https://blog.csdn.net/yan234280533/article/details/78312620
