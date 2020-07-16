@@ -111,16 +111,19 @@ func updateProgressingCondition(status *workerv1.WorkerStatus, worker *workerv1.
 	updatedReplicas := currentDeployment.Status.UpdatedReplicas
 	requiredReplicas := worker.Spec.Replicas
 
+	workerSpecHash := worker.Annotations[string(SPEC_HASH)]
+	deploySpecHash := currentDeployment.Annotations[string(SPEC_HASH)]
+
 	condition := workerv1.WorkerCondition{Type: PROGRESSING}
-	if requiredReplicas <= currentReplicas {
+	if workerSpecHash != deploySpecHash {
+		condition.Reason = NEW_WORKER_CREATED
+		condition.Message = "New worker is created"
+	} else if requiredReplicas <= currentReplicas {
 		condition.Reason = NEW_WORKER_AVAILABLE
 		condition.Message = "New worker is available"
 	} else if updatedReplicas > 0 {
 		condition.Reason = NEW_WORKER_UPDATING
 		condition.Message = "New worker is updating"
-	} else if updatedReplicas == 0 {
-		condition.Reason = NEW_WORKER_CREATED
-		condition.Message = "New worker is created"
 	}
 
 	status = assignCondition(status, condition)

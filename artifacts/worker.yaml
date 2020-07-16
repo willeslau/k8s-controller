@@ -1,15 +1,15 @@
 apiVersion: willesxm.k8s.io/v1
 kind: Worker
 metadata:
-  name: sample-worker
+  name: worker
   labels:
-    app: rpc-server
+    app: rpc-server-v2
 spec:
-  project: test-project
-  replicas: 3
+  project: project
+  replicas: 2
   resources:
     concurrency: 10
-    cpu: 50m
+    cpu: 100m
     memory: 50M
     gpu: false
   image: nginx

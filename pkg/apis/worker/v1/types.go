@@ -49,8 +49,8 @@ type WorkerSpec struct {
 	Replicas  int32  `json:"replicas"`
 	Resources struct {
 		Concurrency int  `json:"concurrency"`
-		CPU         int  `json:"cpu"`
-		Memory      int  `json:"memory"`
+		CPU         string  `json:"cpu"`
+		Memory      string  `json:"memory"`
 		GPU         bool `json:"gpu"`
 	} `json:"resources"`
 }

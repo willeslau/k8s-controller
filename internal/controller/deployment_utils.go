@@ -158,11 +158,16 @@ func generateLabelsForDeployment(worker *workerv1.Worker) map[string]string {
 }
 
 func deriveResourcesFromWorker(worker *workerv1.Worker) *corev1.ResourceRequirements {
-	cpu := resource.NewQuantity(int64(worker.Spec.Resources.CPU), resource.DecimalSI)
+	cpu, _ := resource.ParseQuantity(worker.Spec.Resources.CPU)
+	memory, _ := resource.ParseQuantity(worker.Spec.Resources.Memory)
+
+	// must call these functions to genreate the string representations
 	cpu.String()
-	memory := resource.NewScaledQuantity(int64(worker.Spec.Resources.Memory), resource.Mega)
+	cpu.Value()
 	memory.String()
-	request := corev1.ResourceList{corev1.ResourceCPU: *cpu, corev1.ResourceMemory: *memory}
+	memory.Value()
+
+	request := corev1.ResourceList{corev1.ResourceCPU: cpu, corev1.ResourceMemory: memory}
 	return &corev1.ResourceRequirements{Requests: request, Limits: request}
 }
 
@@ -172,7 +177,7 @@ func generateDeploymentFromWorker(worker *workerv1.Worker) *appsv1.Deployment {
 	// define all the variables
 	//TODO: add hashing
 	name := worker.GenerateDeploymentName()
-	return &appsv1.Deployment{
+	d := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: worker.Namespace,
@@ -205,6 +210,12 @@ func generateDeploymentFromWorker(worker *workerv1.Worker) *appsv1.Deployment {
 			},
 		},
 	}
+
+	ann := newAnnotation()
+	ann.Set(SPEC_HASH, hashDeployment(d))
+	ann.SetDeploymentAnnotations(d)
+
+	return d
 }
 
 // findMatchDeployment finds the ref deployment in a list of deployments

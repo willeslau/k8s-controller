@@ -7,7 +7,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-
 func (c *Controller) createNewWorker(w *workerv1.Worker) (*appsv1.Deployment, error) {
 	newD, err := c.deploymentRobin.createDeploymentFromWorker(w)
 	if err != nil {
@@ -47,13 +46,30 @@ func (c *Controller) updateWorker(w *workerv1.Worker, dList []*appsv1.Deployment
 	status, err := calculateWorkerStatus(w, latestD, dList)
 	if err != nil { return nil, err }
 
-	if isSameStatus(&w.Status, status) { return dList, nil }
+	if !isSameStatus(&w.Status, status) {
+		w.Status = *status
+		w, err = c.syncWorkerStatus(w)
+		if err != nil { return nil, err }
+	}
 
-	w.Status = *status
-	w, err = c.syncWorkerStatus(w)
-	if err != nil { return nil, err }
+	if workerUpdated := updateWorker(w, latestD); workerUpdated {
+		w, err = c.syncWorker(w)
+		if err != nil { return nil, err }
+	}
 
 	return dList, nil
+}
+
+func updateWorkerAnnotation(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) bool {
+	wA := newAnnotationFromMap(worker.Annotations)
+	dA := newAnnotationFromMap(currentDeployment.Annotations)
+	updated := wA.CopyFrom(dA)
+	wA.AssignToWorker(worker)
+	return updated
+}
+
+func updateWorker(worker *workerv1.Worker, currentDeployment *appsv1.Deployment) bool {
+	return updateWorkerAnnotation(worker, currentDeployment)
 }
 
 func calculateWorkerStatus(worker *workerv1.Worker, currentDeployment *appsv1.Deployment, dList []*appsv1.Deployment) (*workerv1.WorkerStatus, error) {
@@ -88,4 +104,9 @@ func isWorkerUpdated(worker *workerv1.Worker, currentDeployment *appsv1.Deployme
 // syncWorkerStatus syncs the stauts of the worker with the api server
 func (c *Controller) syncWorkerStatus(w *workerv1.Worker) (*workerv1.Worker, error) {
 	return c.workerclientset.WillesxmV1().Workers(w.Namespace).UpdateStatus(context.TODO(), w, metav1.UpdateOptions{})
+}
+
+// syncWorker syncs worker with the api server
+func (c *Controller) syncWorker(w *workerv1.Worker) (*workerv1.Worker, error) {
+	return c.workerclientset.WillesxmV1().Workers(w.Namespace).Update(context.TODO(), w, metav1.UpdateOptions{})
 }
